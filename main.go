@@ -40,8 +40,6 @@
 package main
 
 import (
-	"net/http"
-
 	"golang.org/x/mobile/app"
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/paint"
@@ -52,17 +50,12 @@ import (
 
 func main() {
 	// checkNetwork runs only once when the app first loads.
-	go checkNetwork()
 
 	app.Main(func(a app.App) {
 		var glctx gl.Context
-		det, sz := determined, size.Event{}
+		sz := size.Event{}
 		for {
 			select {
-			case <-det:
-				a.Send(paint.Event{})
-				det = nil
-
 			case e := <-a.Events():
 				switch e := a.Filter(e).(type) {
 				case lifecycle.Event:
@@ -85,30 +78,15 @@ func main() {
 }
 
 var (
-	determined = make(chan struct{})
-	ok         = false
+	ok = false
 )
 
-func checkNetwork() {
-	defer close(determined)
-
-	_, err := http.Get("http://golang.org/")
-	if err != nil {
-		return
-	}
-	ok = true
-}
-
 func onDraw(glctx gl.Context, sz size.Event) {
-	select {
-	case <-determined:
-		if ok {
-			glctx.ClearColor(0, 1, 0, 1)
-		} else {
-			glctx.ClearColor(1, 0, 0, 1)
-		}
-	default:
-		glctx.ClearColor(0, 0, 0, 1)
+	if ok {
+		glctx.ClearColor(0, 1, 0, 1)
+	} else {
+		glctx.ClearColor(1, 0, 0, 1)
 	}
+
 	glctx.Clear(gl.COLOR_BUFFER_BIT)
 }
