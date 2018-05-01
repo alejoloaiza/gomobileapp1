@@ -1,45 +1,12 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// +build darwin linux windows
-
-// An app that paints green if golang.org is reachable when the app first
-// starts, or red otherwise.
-//
-// In order to access the network from the Android app, its AndroidManifest.xml
-// file must include the permission to access the network.
-//
-//   http://developer.android.com/guide/topics/manifest/manifest-intro.html#perms
-//
-// The gomobile tool auto-generates a default AndroidManifest file by default
-// unless the package directory contains the AndroidManifest.xml. Users can
-// customize app behavior, such as permissions and app name, by providing
-// the AndroidManifest file. This is irrelevent to iOS.
-//
-// Note: This demo is an early preview of Go 1.5. In order to build this
-// program as an Android APK using the gomobile tool.
-//
-// See http://godoc.org/golang.org/x/mobile/cmd/gomobile to install gomobile.
-//
-// Get the network example and use gomobile to build or install it on your device.
-//
-//   $ go get -d golang.org/x/mobile/example/network
-//   $ gomobile build golang.org/x/mobile/example/network # will build an APK
-//
-//   # plug your Android device to your computer or start an Android emulator.
-//   # if you have adb installed on your machine, use gomobile install to
-//   # build and deploy the APK to an Android target.
-//   $ gomobile install golang.org/x/mobile/example/network
-//
-// Switch to your device or emulator to start the network application from
-// the launcher.
-// You can also run the application on your desktop by running the command
-// below. (Note: It currently doesn't work on Windows.)
-//   $ go install golang.org/x/mobile/example/network && network
 package main
 
 import (
+	"math/rand"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/ahmdrz/goinsta"
 	"golang.org/x/mobile/app"
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/paint"
@@ -49,10 +16,9 @@ import (
 )
 
 func main() {
-	// checkNetwork runs only once when the app first loads.
-
 	app.Main(func(a app.App) {
 		var glctx gl.Context
+
 		sz := size.Event{}
 		for {
 			select {
@@ -69,8 +35,17 @@ func main() {
 					onDraw(glctx, sz)
 					a.Publish()
 				case touch.Event:
-					ok = !ok
-					a.Send(paint.Event{})
+					if time.Now().After(t2) {
+						t2 = time.Now().Add(time.Second * 5)
+						ok = !ok
+						a.Send(paint.Event{})
+					}
+					if counter == 0 {
+						_ = GetConfig("config.json")
+						Uploadlists()
+						counter++
+						go InstagramMain()
+					}
 				}
 			}
 		}
@@ -78,14 +53,96 @@ func main() {
 }
 
 var (
-	ok = false
+	ok           = false
+	counter      = 0
+	FemaleNames  = make(map[string]int)
+	t2           = time.Now().Add(time.Second * 2)
+	insta        *goinsta.Instagram
+	myUsers      []FollowingUser
+	myInboxUsers = make(map[string]int)
 )
 
+type FollowingUser struct {
+	ID       int64
+	Username string
+	Fullname string
+}
+
+func InstagramMain() {
+	rand.Seed(time.Now().UnixNano())
+
+	insta = goinsta.New(Localconfig.InstaUser, Localconfig.InstaPass)
+	err := insta.Login()
+	if err != nil {
+		panic(err)
+	}
+	users, err := insta.UserFollowing(insta.InstaType.LoggedInUser.ID, "")
+	var response FollowingUser
+	if err != nil {
+		return
+	}
+	inbox, err := insta.GetV2Inbox()
+	if err != nil {
+		return
+	}
+	for _, thread := range inbox.Inbox.Threads {
+		for _, userthreads := range thread.Users {
+			myInboxUsers[userthreads.Username] = 1
+		}
+	}
+	for _, user := range users.Users {
+		if myInboxUsers[user.Username] != 1 {
+			fullname := strings.Split(user.FullName, " ")
+			firstname := strings.ToLower(fullname[0])
+			response.Username = user.Username
+			response.ID = user.ID
+			response.Fullname = firstname
+			myUsers = append(myUsers, response)
+		}
+	}
+
+	for _, dmuser := range myUsers {
+		DirectMessage(dmuser.Username, dmuser.Fullname, dmuser.ID)
+		time.Sleep(2 * time.Minute)
+	}
+
+	defer insta.Logout()
+}
+func Uploadlists() {
+	femalelistraw := Localconfig.FemaleNames
+	for _, bname3 := range femalelistraw {
+		FemaleNames[bname3] = 1
+	}
+}
+
+func PrepareMessage(Message string, NameOfUser string) string {
+	resp := ""
+	if FemaleNames[strings.ToLower(NameOfUser)] == 1 {
+		resp = strings.Replace(Message, "{name}", strings.ToLower(NameOfUser), 1)
+	} else {
+		resp = strings.Replace(Message, "{name}", "", 1)
+	}
+	return resp
+
+}
+func DirectMessage(To string, Name string, Id int64) {
+
+	Message := Localconfig.Sentences[random(0, 9)]
+	newMessage := PrepareMessage(Message, Name)
+
+	_, err := insta.DirectMessage(strconv.FormatInt(Id, 10), newMessage)
+	if err != nil {
+		panic(err)
+	}
+}
+func random(min int, max int) int {
+	return rand.Intn(max-min) + min
+}
 func onDraw(glctx gl.Context, sz size.Event) {
 	if ok {
-		glctx.ClearColor(0, 1, 0, 1)
+		glctx.ClearColor(1, 1, 1, 1)
 	} else {
-		glctx.ClearColor(1, 0, 0, 1)
+		glctx.ClearColor(0, 0, 0, 1)
 	}
 
 	glctx.Clear(gl.COLOR_BUFFER_BIT)
